@@ -11,15 +11,26 @@ chmod +x acm-day2-label-generator.sh
 ./acm-day2-label-generator.sh --repo /path/to/acm-sot --output labels.sh
 ```
 
-Repo yolu `--repo` yerine `ACM_SOT_REPO` ortam değişkeniyle de verilebilir:
+`--repo` bir yerel checkout yolu veya Git remote URL'si olabilir. Remote repo
+geçici bir dizine shallow clone edilir ve işlem bitince temizlenir:
+
+```bash
+./acm-day2-label-generator.sh \
+	--repo https://github.com/example/acm-sot.git \
+	--output labels.sh
+```
+
+Repo yolu veya remote URL'si `--repo` yerine `ACM_SOT_REPO` ortam değişkeniyle
+de verilebilir:
 
 ```bash
 ACM_SOT_REPO=/path/to/acm-sot ./acm-day2-label-generator.sh
 ```
 
 `whiptail` veya `dialog` bulunmuyorsa script standart `read` tabanlı CLI
-akışına geçer. Gerçek repo yolu verilmezse lokal testler için istenen örnek
-policy ağacını temsil eden mock envanter kullanılır.
+akışına geçer. Repo hiç verilmezse lokal testler için istenen örnek policy
+ağacını temsil eden mock envanter kullanılır. Verilen yerel repo veya remote
+URL geçersizse script hata ile sonlanır.
 
 Ortam seçimi bir kez yapılır. Seçilen ortamla aynı ada sahip overlay mevcutsa
 ilgili policy otomatik seçilir; ortamla eşleşmeyen çoklu overlay'ler için

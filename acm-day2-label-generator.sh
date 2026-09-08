@@ -5,6 +5,7 @@
 # Kullanım:
 #   ./acm-day2-label-generator.sh
 #   ./acm-day2-label-generator.sh --repo /path/to/acm-sot
+#   ./acm-day2-label-generator.sh --repo https://github.com/example/acm-sot.git
 #   ACM_SOT_REPO=/path/to/acm-sot ./acm-day2-label-generator.sh
 #
 # Script, whiptail veya dialog varsa menülü bir arayüz kullanır. İkisi de
@@ -16,6 +17,7 @@ set -o pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 REPO_PATH="${ACM_SOT_REPO:-}"
+CLONE_DIR=""
 OUTPUT_FILE=""
 UI_TOOL=""
 CLUSTER_NAME=""
@@ -50,14 +52,14 @@ LABEL_COMMANDS=()
 # Scriptin kullanım seçeneklerini ve örnek komutlarını ekrana basar.
 usage() {
   cat <<EOF
-Kullanım: $SCRIPT_NAME [--repo /path/to/acm-sot] [--output /path/to/file]
+Kullanım: $SCRIPT_NAME [--repo PATH_OR_GIT_URL] [--output /path/to/file]
 
 Seçenekler:
-  --repo PATH       acm-sot checkout yolu (varsayılan: ACM_SOT_REPO)
+  --repo VALUE      Yerel acm-sot yolu veya Git repo URL'si (varsayılan: ACM_SOT_REPO)
   --output PATH     Üretilen oc komutlarını dosyaya kaydet
   -h, --help        Bu yardımı göster
 
-Gerçek repo verilmez veya bulunamazsa örnek mock envanter kullanılır.
+Repo verilmezse örnek mock envanter kullanılır.
 EOF
 }
 
@@ -176,13 +178,13 @@ load_mock_inventory() {
     overlay="${entry#*|}"
     OVERLAY_POLICIES+=("$policy")
     OVERLAYS+=("$overlay")
-    if [[ ${#POLICIES[@]} -eq 0 ]] || ! contains "$policy" "${POLICIES[@]}"; then
+    if [[ ${#POLICIES[@]:-0} -eq 0 ]] || ! contains "$policy" "${POLICIES[@]-}"; then
       POLICIES+=("$policy")
     fi
   done
   for policy in "${MOCK_BASE_POLICIES[@]}"; do
     BASE_POLICIES+=("$policy")
-    if ! contains "$policy" "${POLICIES[@]}"; then
+    if ! contains "$policy" "${POLICIES[@]-}"; then
       POLICIES+=("$policy")
     fi
   done
@@ -194,7 +196,6 @@ load_repo_inventory() {
   local resource_dir policy overlays_dir overlay base_dir
   local inventory_file
   inventory_file="$(mktemp "${TMPDIR:-/tmp}/acm-sot-inventory.XXXXXX")"
-  trap 'rm -f "$inventory_file"' EXIT HUP INT TERM
 
   find "$REPO_PATH/resources" -mindepth 2 -maxdepth 4 -type d -print >"$inventory_file"
   while IFS= read -r resource_dir; do
@@ -206,7 +207,7 @@ load_repo_inventory() {
           overlay="${overlay_dir##*/}"
           OVERLAY_POLICIES+=("$policy")
           OVERLAYS+=("$overlay")
-          if [[ ${#POLICIES[@]} -eq 0 ]] || ! contains "$policy" "${POLICIES[@]}"; then
+          if [[ ${#POLICIES[@]:-0} -eq 0 ]] || ! contains "$policy" "${POLICIES[@]-}"; then
             POLICIES+=("$policy")
           fi
         done < <(find "$resource_dir" -mindepth 1 -maxdepth 1 -type d -print0)
@@ -215,21 +216,43 @@ load_repo_inventory() {
         base_dir="${resource_dir%/base}"
         policy="${base_dir##*/}"
         BASE_POLICIES+=("$policy")
-        if ! contains "$policy" "${POLICIES[@]}"; then
+        if ! contains "$policy" "${POLICIES[@]-}"; then
           POLICIES+=("$policy")
         fi
         ;;
     esac
   done <"$inventory_file"
   rm -f "$inventory_file"
-  trap - EXIT HUP INT TERM
 }
 
-# Gerçek repo kullanılabiliyorsa repo envanterini, yoksa mock envanteri yükler.
+# Repo URL'sini geçici bir checkout'a indirir veya yerel repo yolunu doğrular.
+prepare_repo() {
+  if [[ -z "$REPO_PATH" ]]; then
+    return 0
+  fi
+
+  if [[ -d "$REPO_PATH/resources" ]]; then
+    return 0
+  fi
+
+  if [[ "$REPO_PATH" =~ ^[[:alpha:]][[:alnum:]+.-]*:// || "$REPO_PATH" =~ ^git@ ]]; then
+    CLONE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/acm-sot.XXXXXX")"
+    trap 'rm -rf "$CLONE_DIR"' EXIT HUP INT TERM
+    printf 'Git repo klonlanıyor: %s\n' "$REPO_PATH"
+    git clone --depth 1 "$REPO_PATH" "$CLONE_DIR" >/dev/null || die "Git repo klonlanamadı: $REPO_PATH"
+    REPO_PATH="$CLONE_DIR"
+    return 0
+  fi
+
+  die "Repo yolu bulunamadı veya resources dizini yok: $REPO_PATH"
+}
+
+# Gerçek repo kullanılabiliyorsa repo envanterini, repo verilmediyse mock envanteri yükler.
 load_inventory() {
-  if [[ -n "$REPO_PATH" && -d "$REPO_PATH/resources" ]]; then
+  prepare_repo
+  if [[ -n "$REPO_PATH" ]]; then
     load_repo_inventory
-    [[ ${#POLICIES[@]} -gt 0 ]] || die "Repo içinde resources altında policy bulunamadı."
+    [[ ${#POLICIES[@]:-0} -gt 0 ]] || die "Repo içinde resources altında policy bulunamadı."
     printf 'Repo envanteri okundu: %s\n' "$REPO_PATH"
   else
     load_mock_inventory
@@ -254,7 +277,7 @@ choose_overlay() {
     [[ -n "$overlay" ]] && overlays+=("$overlay")
   done < <(policy_overlays "$policy")
 
-  if [[ ${#overlays[@]} -eq 0 ]]; then
+  if [[ ${#overlays[@]:-0} -eq 0 ]]; then
     SELECTED_POLICIES+=("$policy")
     SELECTED_VALUES+=("base")
     return 0
@@ -267,7 +290,7 @@ choose_overlay() {
     return 0
   fi
 
-  if [[ ${#overlays[@]} -eq 1 ]]; then
+  if [[ ${#overlays[@]:-0} -eq 1 ]]; then
     SELECTED_POLICIES+=("$policy")
     SELECTED_VALUES+=("${overlays[0]}")
     return 0
