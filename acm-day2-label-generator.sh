@@ -19,7 +19,6 @@ CLONE_DIR=""
 OUTPUT_FILE=""
 UI_TOOL=""
 CLUSTER_NAME=""
-GLOBAL_ENV=""
 
 # Gerçek repo bulunamadığında lokal testler için kullanılan örnek envanter.
 # Format: policy|overlay. Base-only policy'ler ayrıca MOCK_BASE_POLICIES içinde.
@@ -47,6 +46,11 @@ BASE_POLICIES=()
 SELECTED_POLICIES=()
 SELECTED_VALUES=()
 LABEL_COMMANDS=()
+OVERLAY_GROUP_SIGNATURES=()
+OVERLAY_GROUP_POLICIES=()
+OVERLAY_GROUP_COUNTS=()
+OVERLAY_GROUP_COUNT=0
+SELECTED_GROUP_POLICY_COUNT=0
 
 # Scriptin kullanım seçeneklerini ve örnek komutlarını ekrana basar.
 usage() {
@@ -290,9 +294,82 @@ policy_overlays() {
   for ((i = 0; i < ${#OVERLAY_POLICIES[@]}; i++)); do
     [[ "${OVERLAY_POLICIES[$i]}" == "$policy" ]] && printf '%s\n' "${OVERLAYS[$i]}"
   done
+  return 0
 }
 
-# Policy için base veya otomatik ortam eşleşmesini seçer; gerekirse menü açar.
+# Policy'nin overlay listesini sıralı ve tekrarsız grup imzasına dönüştürür.
+overlay_signature() {
+  local policy="$1"
+  policy_overlays "$policy" | sort -u | paste -sd, -
+}
+
+find_overlay_group() {
+  local signature="$1"
+  local index
+  for ((index = 0; index < OVERLAY_GROUP_COUNT; index++)); do
+    if [[ "${OVERLAY_GROUP_SIGNATURES[$index]}" == "$signature" ]]; then
+      printf '%s\n' "$index"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Tüm policy'leri tarayıp aynı overlay kümesine sahip olanları gruplar.
+choose_common_overlay_groups() {
+  local policy signature group_index policy_list selected_index value
+  local group_policies=()
+  local group_options=()
+
+  for policy in "${POLICIES[@]}"; do
+    signature="$(overlay_signature "$policy")"
+    [[ -n "$signature" ]] || continue
+    if group_index="$(find_overlay_group "$signature")"; then
+      policy_list="${OVERLAY_GROUP_POLICIES[$group_index]}"
+      OVERLAY_GROUP_POLICIES[$group_index]="$policy_list,$policy"
+      OVERLAY_GROUP_COUNTS[$group_index]=$((OVERLAY_GROUP_COUNTS[$group_index] + 1))
+    else
+      OVERLAY_GROUP_SIGNATURES+=("$signature")
+      OVERLAY_GROUP_POLICIES+=("$policy")
+      OVERLAY_GROUP_COUNTS+=(1)
+      OVERLAY_GROUP_COUNT=$((OVERLAY_GROUP_COUNT + 1))
+    fi
+  done
+
+  for ((group_index = 0; group_index < OVERLAY_GROUP_COUNT; group_index++)); do
+    [[ "${OVERLAY_GROUP_COUNTS[$group_index]}" -gt 1 ]] || continue
+    group_options=()
+    IFS=',' read -r -a group_options <<< "${OVERLAY_GROUP_SIGNATURES[$group_index]}"
+    group_policies=()
+    IFS=',' read -r -a group_policies <<< "${OVERLAY_GROUP_POLICIES[$group_index]}"
+    policy_list="${group_policies[*]}"
+    selected_index="$(ui_menu "Ortak overlay grubu [$policy_list]" "${group_options[@]}")"
+    value="${group_options[$((selected_index - 1))]}"
+    for policy in "${group_policies[@]}"; do
+      SELECTED_POLICIES+=("$policy")
+      SELECTED_VALUES+=("$value")
+      SELECTED_GROUP_POLICY_COUNT=$((SELECTED_GROUP_POLICY_COUNT + 1))
+    done
+  done
+}
+
+common_group_contains() {
+  local wanted="$1"
+  local policy
+  local group_policies
+  local group_index
+  [[ $SELECTED_GROUP_POLICY_COUNT -gt 0 ]] || return 1
+  for ((group_index = 0; group_index < OVERLAY_GROUP_COUNT; group_index++)); do
+    [[ "${OVERLAY_GROUP_COUNTS[$group_index]}" -gt 1 ]] || continue
+    IFS=',' read -r -a group_policies <<< "${OVERLAY_GROUP_POLICIES[$group_index]}"
+    for policy in "${group_policies[@]}"; do
+      [[ "$policy" == "$wanted" ]] && return 0
+    done
+  done
+  return 1
+}
+
+# Policy için base veya overlay seçer; ortak gruplar dışında kalanları ayrı sorar.
 choose_overlay() {
   local policy="$1"
   local overlays=()
@@ -304,13 +381,6 @@ choose_overlay() {
   if [[ ${#overlays[@]} -eq 0 ]]; then
     SELECTED_POLICIES+=("$policy")
     SELECTED_VALUES+=("base")
-    return 0
-  fi
-
-  # Ortamla birebir eşleşen overlay varsa ek soru sormadan onu seç.
-  if contains "$GLOBAL_ENV" "${overlays[@]}"; then
-    SELECTED_POLICIES+=("$policy")
-    SELECTED_VALUES+=("$GLOBAL_ENV")
     return 0
   fi
 
@@ -367,17 +437,12 @@ main() {
 
   CLUSTER_NAME="$(ui_input 'Managed cluster adını girin')"
   [[ -n "$CLUSTER_NAME" ]] || die 'Cluster adı boş bırakılamaz.'
-  local environment_index
-  environment_index="$(ui_menu 'Kurulacak cluster ortamı nedir?' test prod)"
-  case "$environment_index" in
-    1) GLOBAL_ENV="test" ;;
-    2) GLOBAL_ENV="prod" ;;
-    *) die 'Geçersiz ortam seçimi.' ;;
-  esac
-
   local policy
+    choose_common_overlay_groups
   for policy in "${POLICIES[@]}"; do
-    choose_overlay "$policy"
+      if ! common_group_contains "$policy"; then
+      choose_overlay "$policy"
+    fi
   done
   build_commands
   write_output

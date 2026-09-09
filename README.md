@@ -34,7 +34,9 @@ URL geçersizse script hata ile sonlanır. Script, checkout içindeki `resources
 dizinini bulur ve yalnızca bu dizinin altındaki policy'leri kullanır; repo
 kökünde değilse alt dizinlerde bulunan `resources` dizinlerini de destekler.
 
-Ortam seçimi bir kez yapılır. Seçilen ortamla aynı ada sahip overlay mevcutsa
-ilgili policy otomatik seçilir; ortamla eşleşmeyen çoklu overlay'ler için
-ayrıca menü gösterilir. Overlay bulunmayan policy'ler `sot/<policy>=base`
-etiketiyle üretilir.
+Script tüm policy'leri taradıktan sonra aynı overlay kümesine sahip policy'leri
+gruplar. Örneğin `prod,test` kullanan policy'ler birlikte gösterilir; aynı
+zamanda `prod,test,staging` kullanan policy'ler farklı bir grup olarak ele
+alınır. Grup seçiminde seçilen overlay, gruptaki tüm policy'lere uygulanır.
+Aynı overlay kümesine sahip olmayan policy'ler ayrı ayrı sorulur. Overlay
+bulunmayan policy'ler `sot/<policy>=base` etiketiyle üretilir.
