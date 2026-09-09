@@ -17,6 +17,7 @@ set -o pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 REPO_PATH="${ACM_SOT_REPO:-}"
+RESOURCES_PATH=""
 CLONE_DIR=""
 OUTPUT_FILE=""
 UI_TOOL=""
@@ -197,7 +198,7 @@ load_repo_inventory() {
   local inventory_file
   inventory_file="$(mktemp "${TMPDIR:-/tmp}/acm-sot-inventory.XXXXXX")"
 
-  find "$REPO_PATH/resources" -mindepth 2 -maxdepth 4 -type d -print >"$inventory_file"
+  find "$RESOURCES_PATH" -mindepth 2 -maxdepth 4 -type d -print >"$inventory_file"
   while IFS= read -r resource_dir; do
     case "$resource_dir" in
       */resources/*/overlays)
@@ -225,13 +226,22 @@ load_repo_inventory() {
   rm -f "$inventory_file"
 }
 
-# Repo URL'sini geçici bir checkout'a indirir veya yerel repo yolunu doğrular.
-prepare_repo() {
-  if [[ -z "$REPO_PATH" ]]; then
+# Repo checkout'u içinde yalnızca resources ağacını seçer.
+locate_resources() {
+  if [[ -d "$REPO_PATH/resources" ]]; then
+    RESOURCES_PATH="$REPO_PATH/resources"
     return 0
   fi
 
-  if [[ -d "$REPO_PATH/resources" ]]; then
+  RESOURCES_PATH="$(find "$REPO_PATH" \
+    -path '*/.git' -prune -o \
+    -type d -name resources -print -quit)"
+  [[ -n "$RESOURCES_PATH" ]] || die "Repo içinde resources dizini bulunamadı: $REPO_PATH"
+}
+
+# Repo URL'sini geçici bir checkout'a indirir veya yerel repo yolunu doğrular.
+prepare_repo() {
+  if [[ -z "$REPO_PATH" ]]; then
     return 0
   fi
 
@@ -244,16 +254,17 @@ prepare_repo() {
     return 0
   fi
 
-  die "Repo yolu bulunamadı veya resources dizini yok: $REPO_PATH"
+  [[ -d "$REPO_PATH" ]] || die "Repo yolu bulunamadı: $REPO_PATH"
 }
 
 # Gerçek repo kullanılabiliyorsa repo envanterini, repo verilmediyse mock envanteri yükler.
 load_inventory() {
   prepare_repo
   if [[ -n "$REPO_PATH" ]]; then
+    locate_resources
     load_repo_inventory
     [[ ${#POLICIES[@]:-0} -gt 0 ]] || die "Repo içinde resources altında policy bulunamadı."
-    printf 'Repo envanteri okundu: %s\n' "$REPO_PATH"
+    printf 'Repo envanteri okundu: %s\n' "$RESOURCES_PATH"
   else
     load_mock_inventory
     printf 'Bilgi: Gerçek acm-sot bulunamadı; mock envanter kullanılıyor.\n'

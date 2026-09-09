@@ -30,7 +30,9 @@ ACM_SOT_REPO=/path/to/acm-sot ./acm-day2-label-generator.sh
 `whiptail` veya `dialog` bulunmuyorsa script standart `read` tabanlı CLI
 akışına geçer. Repo hiç verilmezse lokal testler için istenen örnek policy
 ağacını temsil eden mock envanter kullanılır. Verilen yerel repo veya remote
-URL geçersizse script hata ile sonlanır.
+URL geçersizse script hata ile sonlanır. Script, checkout içindeki `resources`
+dizinini bulur ve yalnızca bu dizinin altındaki policy'leri kullanır; repo
+kökünde değilse alt dizinlerde bulunan `resources` dizinlerini de destekler.
 
 Ortam seçimi bir kez yapılır. Seçilen ortamla aynı ada sahip overlay mevcutsa
 ilgili policy otomatik seçilir; ortamla eşleşmeyen çoklu overlay'ler için
