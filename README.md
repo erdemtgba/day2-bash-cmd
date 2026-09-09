@@ -1,6 +1,6 @@
 # ACM Day-2 Label Generator
 
-`acm-day2-label-generator.sh`, `acm-sot` içindeki policy overlay ve base
+`acm-day2-label-generator.sh`, hedef repo içindeki policy overlay ve base
 dizinlerini analiz ederek Hub cluster üzerinde çalıştırılacak
 `oc label managedcluster` komutlarını üretir.
 
@@ -8,7 +8,7 @@ dizinlerini analiz ederek Hub cluster üzerinde çalıştırılacak
 
 ```bash
 chmod +x acm-day2-label-generator.sh
-./acm-day2-label-generator.sh --repo /path/to/acm-sot --output labels.sh
+./acm-day2-label-generator.sh --repo /path/to/repo --output labels.sh
 ```
 
 `--repo` bir yerel checkout yolu veya Git remote URL'si olabilir. Remote repo
@@ -16,15 +16,15 @@ geçici bir dizine shallow clone edilir ve işlem bitince temizlenir:
 
 ```bash
 ./acm-day2-label-generator.sh \
-	--repo https://github.com/example/acm-sot.git \
+	--repo https://github.com/example/reponame.git \
 	--output labels.sh
 ```
 
-Repo yolu veya remote URL'si `--repo` yerine `ACM_SOT_REPO` ortam değişkeniyle
+Repo yolu veya remote URL'si `--repo` yerine `REPO_PATH` ortam değişkeniyle
 de verilebilir:
 
 ```bash
-ACM_SOT_REPO=/path/to/acm-sot ./acm-day2-label-generator.sh
+REPO_PATH=/path/to/repo ./acm-day2-label-generator.sh
 ```
 
 `whiptail` veya `dialog` bulunmuyorsa script standart `read` tabanlı CLI

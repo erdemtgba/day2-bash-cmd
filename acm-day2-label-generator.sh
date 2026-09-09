@@ -2,9 +2,9 @@
 #
 # ACM Day-2 policy overlay analizcisi ve managed cluster label üreticisi.
 #
-#   ./acm-day2-label-generator.sh --repo /path/to/acm-sot
-#   ./acm-day2-label-generator.sh --repo https://github.com/example/acm-sot.git
-#   ACM_SOT_REPO=/path/to/acm-sot ./acm-day2-label-generator.sh
+#   ./acm-day2-label-generator.sh --repo /path/to/repo
+#   ./acm-day2-label-generator.sh --repo https://github.com/example/reponame.git
+#   REPO_PATH=/path/to/repo ./acm-day2-label-generator.sh
 #
 # Script, whiptail veya dialog varsa menülü bir arayüz kullanır. İkisi de
 # yoksa aynı akış standart read komutları ile devam eder.
@@ -13,7 +13,7 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_NAME="$(basename "$0")"
-REPO_PATH="${ACM_SOT_REPO:-}"
+REPO_PATH="${REPO_PATH:-}"
 RESOURCES_PATH=""
 CLONE_DIR=""
 OUTPUT_FILE=""
@@ -58,7 +58,7 @@ usage() {
 Kullanım: $SCRIPT_NAME [--repo PATH_OR_GIT_URL] [--output /path/to/file]
 
 Seçenekler:
-  --repo VALUE      Yerel acm-sot yolu veya Git repo URL'si (varsayılan: ACM_SOT_REPO)
+  --repo VALUE      Yerel repo URL'si (varsayılan: REPO_PATH)
   --output PATH     Üretilen oc komutlarını dosyaya kaydet
   -h, --help        Bu yardımı göster
 
@@ -184,7 +184,7 @@ ui_menu() {
   fi
 }
 
-# Gerçek acm-sot repo bulunamadığında test amacıyla örnek policy envanterini yükler.
+# Gerçek repo bulunamadığında test amacıyla örnek policy envanterini yükler.
 load_mock_inventory() {
   local entry policy overlay
   for entry in "${MOCK_OVERLAYS[@]}"; do
@@ -211,7 +211,7 @@ load_mock_inventory() {
 load_repo_inventory() {
   local resource_dir policy overlays_dir overlay base_dir
   local inventory_file
-  inventory_file="$(mktemp "${TMPDIR:-/tmp}/acm-sot-inventory.XXXXXX")"
+  inventory_file="$(mktemp "${TMPDIR:-/tmp}/repo-inventory.XXXXXX")"
 
   find "$RESOURCES_PATH" -mindepth 2 -maxdepth 4 -type d -print >"$inventory_file"
   while IFS= read -r resource_dir; do
@@ -263,7 +263,7 @@ prepare_repo() {
   fi
 
   if [[ "$REPO_PATH" =~ ^[[:alpha:]][[:alnum:]+.-]*:// || "$REPO_PATH" =~ ^git@ ]]; then
-    CLONE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/acm-sot.XXXXXX")"
+    CLONE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/repo-clone.XXXXXX")"
     trap 'rm -rf "$CLONE_DIR"' EXIT HUP INT TERM
     printf 'Git repo klonlanıyor: %s\n' "$REPO_PATH"
     git clone --depth 1 "$REPO_PATH" "$CLONE_DIR" >/dev/null || die "Git repo klonlanamadı: $REPO_PATH"
@@ -284,7 +284,7 @@ load_inventory() {
     printf 'Repo envanteri okundu: %s\n' "$RESOURCES_PATH"
   else
     load_mock_inventory
-    printf 'Bilgi: Gerçek acm-sot bulunamadı; mock envanter kullanılıyor.\n'
+    printf 'Bilgi: Gerçek repo bulunamadı; mock envanter kullanılıyor.\n'
   fi
 }
 
