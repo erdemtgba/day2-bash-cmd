@@ -2,15 +2,12 @@
 #
 # ACM Day-2 policy overlay analizcisi ve managed cluster label üreticisi.
 #
-# Kullanım:
-#   ./acm-day2-label-generator.sh
 #   ./acm-day2-label-generator.sh --repo /path/to/acm-sot
 #   ./acm-day2-label-generator.sh --repo https://github.com/example/acm-sot.git
 #   ACM_SOT_REPO=/path/to/acm-sot ./acm-day2-label-generator.sh
 #
 # Script, whiptail veya dialog varsa menülü bir arayüz kullanır. İkisi de
 # yoksa aynı akış standart read komutları ile devam eder.
-
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -43,6 +40,7 @@ MOCK_OVERLAYS=(
 MOCK_BASE_POLICIES=("kubeletmaster" "monitoring")
 
 POLICIES=()
+POLICY_COUNT=0
 OVERLAY_POLICIES=()
 OVERLAYS=()
 BASE_POLICIES=()
@@ -77,6 +75,17 @@ contains() {
   local item
   for item in "$@"; do
     [[ "$item" == "$wanted" ]] && return 0
+  done
+  return 1
+}
+
+# Policy listesindeki mevcut bir policy'yi kontrol eder.
+policy_exists() {
+  local wanted="$1"
+  local policy
+  [[ $POLICY_COUNT -gt 0 ]] || return 1
+  for policy in "${POLICIES[@]}"; do
+    [[ "$policy" == "$wanted" ]] && return 0
   done
   return 1
 }
@@ -179,14 +188,16 @@ load_mock_inventory() {
     overlay="${entry#*|}"
     OVERLAY_POLICIES+=("$policy")
     OVERLAYS+=("$overlay")
-    if [[ ${#POLICIES[@]:-0} -eq 0 ]] || ! contains "$policy" "${POLICIES[@]-}"; then
+    if ! policy_exists "$policy"; then
       POLICIES+=("$policy")
+      POLICY_COUNT=$((POLICY_COUNT + 1))
     fi
   done
   for policy in "${MOCK_BASE_POLICIES[@]}"; do
     BASE_POLICIES+=("$policy")
-    if ! contains "$policy" "${POLICIES[@]-}"; then
+    if ! policy_exists "$policy"; then
       POLICIES+=("$policy")
+      POLICY_COUNT=$((POLICY_COUNT + 1))
     fi
   done
 }
@@ -208,8 +219,9 @@ load_repo_inventory() {
           overlay="${overlay_dir##*/}"
           OVERLAY_POLICIES+=("$policy")
           OVERLAYS+=("$overlay")
-          if [[ ${#POLICIES[@]:-0} -eq 0 ]] || ! contains "$policy" "${POLICIES[@]-}"; then
+          if ! policy_exists "$policy"; then
             POLICIES+=("$policy")
+            POLICY_COUNT=$((POLICY_COUNT + 1))
           fi
         done < <(find "$resource_dir" -mindepth 1 -maxdepth 1 -type d -print0)
         ;;
@@ -217,8 +229,9 @@ load_repo_inventory() {
         base_dir="${resource_dir%/base}"
         policy="${base_dir##*/}"
         BASE_POLICIES+=("$policy")
-        if ! contains "$policy" "${POLICIES[@]-}"; then
+        if ! policy_exists "$policy"; then
           POLICIES+=("$policy")
+          POLICY_COUNT=$((POLICY_COUNT + 1))
         fi
         ;;
     esac
@@ -263,7 +276,7 @@ load_inventory() {
   if [[ -n "$REPO_PATH" ]]; then
     locate_resources
     load_repo_inventory
-    [[ ${#POLICIES[@]:-0} -gt 0 ]] || die "Repo içinde resources altında policy bulunamadı."
+    [[ $POLICY_COUNT -gt 0 ]] || die "Repo içinde resources altında policy bulunamadı."
     printf 'Repo envanteri okundu: %s\n' "$RESOURCES_PATH"
   else
     load_mock_inventory
@@ -288,7 +301,7 @@ choose_overlay() {
     [[ -n "$overlay" ]] && overlays+=("$overlay")
   done < <(policy_overlays "$policy")
 
-  if [[ ${#overlays[@]:-0} -eq 0 ]]; then
+  if [[ ${#overlays[@]} -eq 0 ]]; then
     SELECTED_POLICIES+=("$policy")
     SELECTED_VALUES+=("base")
     return 0
@@ -301,7 +314,7 @@ choose_overlay() {
     return 0
   fi
 
-  if [[ ${#overlays[@]:-0} -eq 1 ]]; then
+  if [[ ${#overlays[@]} -eq 1 ]]; then
     SELECTED_POLICIES+=("$policy")
     SELECTED_VALUES+=("${overlays[0]}")
     return 0
